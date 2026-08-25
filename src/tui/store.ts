@@ -17,6 +17,7 @@ import type { ContextBreakdownProjection, ContextPressureProjection, TokenUsageP
 import type { DiscoveredModel, ProviderDraft, ProviderRow } from './modelProfile/types.js'
 import type { PluginRow } from './plugins/types.js'
 import type { AgentPresetRow } from './agentPresets/types.js'
+import type { SubagentRow } from './agents/types.js'
 import type { ApprovalPromptState, QuestionPromptState } from './interaction/types.js'
 import { reasoningOf, textOf } from '../render.js'
 
@@ -50,6 +51,14 @@ export interface AgentPresetsOverlayState {
   readonly error: string | undefined
 }
 
+/** Overlay-owned state for the `/agents` subagent-visibility screen. */
+export interface AgentsOverlayState {
+  /** Joined direct-children listing; empty while the first load is still in flight (see `busy`). */
+  readonly rows: readonly SubagentRow[]
+  readonly busy: boolean
+  readonly error: string | undefined
+}
+
 /**
  * Full-screen overlay replacing the live region's normal controls — except
  * `'approval'`, which `TuiApp` renders inline in the dock (a live-region row
@@ -64,6 +73,7 @@ export type Overlay =
   | { readonly kind: 'context' }
   | { readonly kind: 'plugins'; readonly rows: readonly PluginRow[] }
   | { readonly kind: 'agentPresets'; readonly agentPresets: AgentPresetsOverlayState }
+  | { readonly kind: 'agents'; readonly agents: AgentsOverlayState }
   | { readonly kind: 'approval'; readonly approval: ApprovalPromptState }
   | { readonly kind: 'userQuestion'; readonly userQuestion: QuestionPromptState }
 
@@ -403,6 +413,11 @@ export class TuiStore {
     })
   }
 
+  /** Open the `/agents` overlay to a fresh, loading listing. */
+  openAgents(): void {
+    this.set({ overlay: { kind: 'agents', agents: { rows: [], busy: true, error: undefined } } })
+  }
+
   /** Present one pending tool-approval decision, taking over the live region. */
   openApproval(approval: ApprovalPromptState): void {
     this.set({ overlay: { kind: 'approval', approval } })
@@ -437,6 +452,12 @@ export class TuiStore {
   /** Move the `/presets` overlay's list cursor. */
   selectAgentPresetRow(index: number): void {
     this.updateAgentPresets({ selected: index })
+  }
+
+  /** Patch the open `/agents` overlay's sub-state; a no-op once it's closed. */
+  updateAgents(patch: Partial<AgentsOverlayState>): void {
+    if (this.state.overlay.kind !== 'agents') return
+    this.set({ overlay: { kind: 'agents', agents: { ...this.state.overlay.agents, ...patch } } })
   }
 
   /** Mark the `@`-mention file index as loading; a no-op once candidates are already present. */

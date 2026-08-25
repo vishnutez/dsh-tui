@@ -61,6 +61,7 @@ import { ToolCardsOverlay } from './toolCards/ToolCardsOverlay.js'
 import { ContextOverlay } from './context/ContextOverlay.js'
 import { PluginsOverlay } from './plugins/PluginsOverlay.js'
 import { AgentPresetsOverlay } from './agentPresets/AgentPresetsOverlay.js'
+import { AgentsOverlay } from './agents/AgentsOverlay.js'
 import { ApprovalOverlay } from './interaction/ApprovalOverlay.js'
 import { QuestionOverlay } from './interaction/QuestionOverlay.js'
 
@@ -401,6 +402,8 @@ class TuiApp implements TuiHandle {
         return new PluginsOverlay(this.tui, overlay.rows, actions)
       case 'agentPresets':
         return new AgentPresetsOverlay(store, actions)
+      case 'agents':
+        return new AgentsOverlay(this.tui, store, actions)
       case 'approval':
         // Rendered inline via `approvalSlot` in `updateOverlay` instead —
         // never reaches a full-screen `showOverlay` panel.

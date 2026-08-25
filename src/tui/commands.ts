@@ -20,6 +20,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { command: '/context', description: 'Show context window usage' },
   { command: '/plugins', description: 'Show the loaded plugin tree' },
   { command: '/presets', description: 'Show and switch agent presets (only while the session is blank)' },
+  { command: '/agents', description: "List this session's direct subagent children and their status" },
   { command: '/goal', description: 'Set or view the long-running goal: /goal <objective> | clear | edit <objective> | pause | resume' },
   { command: '/plan', description: 'Enter plan mode, optionally with a message; /plan off to leave' },
   { command: '/compact', description: 'Summarize and compact session history' },
@@ -157,6 +158,9 @@ export function runSlashCommand(command: string, actions: TuiActions): void {
       return
     case '/presets':
       actions.openAgentPresets()
+      return
+    case '/agents':
+      actions.openAgents()
       return
     case '/compact':
       actions.compact()
