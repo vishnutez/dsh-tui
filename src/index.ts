@@ -55,6 +55,7 @@ import type {} from '@deepseek-ai/dsh-session-stats'
 // Type-only: resolves the 'title' SessionProjectionMap entry the terminal
 // title (`TuiApp`'s `updateTerminalTitle`) reads.
 import type {} from '@deepseek-ai/dsh-session-title'
+import type { SubagentListEntry } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-token-meter'
 
 import { ensureSessionIdPrefix, stripSessionIdPrefix } from './sessionId.js'
@@ -70,6 +71,7 @@ import { checkForUpdate } from './updateCheck.js'
 import type { ProviderDraft, ProviderRow, StoredProviderProfile } from './tui/modelProfile/types.js'
 import type { PluginRow } from './tui/plugins/types.js'
 import type { AgentPresetRow } from './tui/agentPresets/types.js'
+import type { SubagentRow } from './tui/agents/types.js'
 import type { QuestionAnswer, QuestionOptionRow } from './tui/interaction/types.js'
 
 /** Stable Cordis plugin name. */
@@ -158,6 +160,19 @@ function presetRowLabel(preset: AgentPreset): string {
 /** Whether `session` has run no turn yet — the only state a preset switch is accepted in, mirroring the harness's own `sessionBlank`. */
 function sessionBlank(session: Session): boolean {
   return !session.events.some(event => event.type === 'turn/start')
+}
+
+/** Join one `ctx.subagents.listChildren()` entry into the `/agents` overlay's plain row shape. */
+function toSubagentRow(entry: SubagentListEntry): SubagentRow {
+  if (entry.kind === 'diagnostic') return { kind: 'diagnostic', id: entry.id, diagnostic: entry.reason }
+  return {
+    kind: 'child',
+    id: entry.id,
+    label: entry.mode === 'one-shot' ? entry.label ?? entry.id : entry.label,
+    mode: entry.mode,
+    activity: entry.activity,
+    hasChildren: entry.hasChildren,
+  }
 }
 
 // --- `/goal` helpers, mirroring `@deepseek-ai/dsh-command-goal`'s own handler ---
@@ -297,6 +312,10 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
   // roster just shows no preset in the status bar and tells the reader
   // /presets is unavailable instead of refusing to start.
   const presets = ctx.get('agentPresets')
+  // Same optional-service pattern: a profile without the subagent runtime
+  // just tells the reader /agents is unavailable instead of refusing to
+  // start.
+  const subagents = ctx.get('subagents')
   // Same optional-service pattern: a profile without a mounted settings
   // service just keeps prompt history in memory for the process's lifetime
   // instead of refusing to start. Registration can also fail loud on an
@@ -470,6 +489,17 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
       current.store.updateAgentPresets({ rows, busy: false, error: undefined })
     } catch (error) {
       current.store.updateAgentPresets({ busy: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  /** Fetch the current session's direct subagent children and refresh the open `/agents` overlay's row list. */
+  async function loadSubagents(): Promise<void> {
+    if (subagents === undefined) return
+    try {
+      const entries = await subagents.listChildren(current.agent.session.id)
+      current.store.updateAgents({ rows: entries.map(toSubagentRow), busy: false, error: undefined })
+    } catch (error) {
+      current.store.updateAgents({ busy: false, error: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -1203,6 +1233,18 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
           .catch((error: unknown) => {
             store.updateAgentPresets({ busy: false, error: error instanceof Error ? error.message : String(error) })
           })
+      },
+
+      openAgents() {
+        if (subagents === undefined) {
+          store.setNotice('subagents are not available in this profile')
+          return
+        }
+        store.openAgents()
+        void loadSubagents()
+      },
+      closeAgents() {
+        store.closeOverlay()
       },
 
       answerApproval(outcome) {

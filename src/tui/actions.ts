@@ -87,6 +87,11 @@ export interface TuiActions {
   /** Apply a different agent preset to the current (blank) session. */
   applyAgentPreset(id: string): void
 
+  /** Open the `/agents` subagent-visibility overlay and start loading the current session's direct children. */
+  openAgents(): void
+  /** Close the `/agents` overlay. */
+  closeAgents(): void
+
   /** Answer the pending in-terminal tool-approval prompt. */
   answerApproval(outcome: 'allowed-once' | 'rejected'): void
   /** Answer the pending in-terminal question prompt. */
