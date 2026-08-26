@@ -112,16 +112,21 @@ const AGENTS_STRIP_LABEL_LIMIT = 24
  * The docked subagent switcher, directly below the composer — Claude Code
  * CLI's own solid/hollow-circle session picker. `main` is always the first
  * segment; each subagent child follows, latest-spawned first (see
- * `refreshAgentsStrip` in `index.ts`), solid when its own transcript
- * overlay (`AgentDetailOverlay`) is the one currently open. Renders nothing
- * once the session has spawned no subagent children yet, so a session that
- * never touches subagents carries no extra row.
+ * `refreshAgentsStrip` in `index.ts`), solid when its own transcript is the
+ * one currently filling the primary scroll region (`TuiState.viewingChild`).
+ * Renders nothing unless at least one child is currently `running` —
+ * mirroring Claude Code CLI's own ephemeral background-task indicator, this
+ * is about the current batch of active work, not a permanent log of every
+ * subagent the session has ever spawned. A child that's already finished
+ * still shows (and stays reachable) as long as a sibling from the same
+ * batch is still running; once the whole batch settles, the strip
+ * disappears entirely, including the finished siblings' segments.
  * @param rows - the live agents-strip roster (`TuiState.agentsStrip`); only `child` rows render as segments — a `diagnostic` row has no transcript to switch to.
- * @param viewingChildId - the open `AgentDetailOverlay`'s child id, or `undefined` while the main transcript is shown (see `cycleAgentsStrip` in `index.ts`).
+ * @param viewingChildId - `TuiState.viewingChild`'s child id, or `undefined` while the main transcript is shown (see `cycleAgentsStrip` in `index.ts`).
  */
 export function buildAgentsStripText(rows: readonly SubagentRow[], viewingChildId: string | undefined): string {
   const children = rows.filter((row): row is Extract<SubagentRow, { kind: 'child' }> => row.kind === 'child')
-  if (children.length === 0) return ''
+  if (!children.some(child => child.activity === 'running')) return ''
   const segment = (id: string | undefined, label: string): string => {
     const active = id === viewingChildId
     const circle = active ? success('●') : dim('○')

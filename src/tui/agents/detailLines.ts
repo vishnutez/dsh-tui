@@ -1,10 +1,10 @@
 /**
- * Pure event-log → transcript-lines projection for the `/agents` detail
- * view — split out of `AgentDetailOverlay` so it's testable against plain
- * `SessionEvent[]` fixtures, without a live pi-tui `Component`. Builds its
- * own `tool/call` name/argument lookup scoped to the given events: the main
- * transcript's own `TuiStore.getToolCall` only knows about the live
- * session's own calls, not a subagent child's.
+ * Pure event-log → transcript-lines projection for a viewed subagent
+ * child's transcript — split out of `TranscriptArea` (in `TuiApp`) so it's
+ * testable against plain `SessionEvent[]` fixtures, without a live pi-tui
+ * `Component`. Builds its own `tool/call` name/argument lookup scoped to
+ * the given events: the main transcript's own `TuiStore.getToolCall` only
+ * knows about the live session's own calls, not a subagent child's.
  * @module @tomowang/dsh-tui/tui/agents/detailLines
  */
 

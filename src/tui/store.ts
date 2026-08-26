@@ -53,14 +53,18 @@ export interface AgentPresetsOverlayState {
 }
 
 /**
- * Overlay-owned state for one subagent child's own read-only transcript —
- * opened from the docked agents-strip switcher (see `buildAgentsStripText`/
- * `cycleAgentsStrip`), mirroring Claude Code CLI's subagent-focus view.
- * `live: true` means `events` is still receiving further entries as the
- * child runs (see `subscribeAgentDetail`/`appendAgentDetailEvent`); `false`
- * means it's a fixed snapshot of an already-finished child.
+ * One subagent child's own read-only transcript, opened from the docked
+ * agents-strip switcher (see `buildAgentsStripText`/`cycleAgentsStrip`),
+ * mirroring Claude Code CLI's subagent-focus view. Deliberately NOT part of
+ * `Overlay` — unlike a `showOverlay` panel, viewing a child swaps only the
+ * primary scroll region's content (see `TranscriptArea` in `TuiApp`); the
+ * composer, agents strip, and status rows stay live underneath so the
+ * reader can switch to another child, or back to main, without backing out
+ * first. `live: true` means `events` is still receiving further entries as
+ * the child runs (see `subscribeAgentDetail`/`appendViewingChildEvent`);
+ * `false` means it's a fixed snapshot of an already-finished child.
  */
-export interface AgentDetailOverlayState {
+export interface ViewingChildState {
   /** The subagent child's session id. */
   readonly childId: string
   /** Display label carried over from the agents-strip roster. */
@@ -95,7 +99,6 @@ export type Overlay =
   | { readonly kind: 'context' }
   | { readonly kind: 'plugins'; readonly rows: readonly PluginRow[] }
   | { readonly kind: 'agentPresets'; readonly agentPresets: AgentPresetsOverlayState }
-  | { readonly kind: 'agentDetail'; readonly agentDetail: AgentDetailOverlayState }
   | { readonly kind: 'resume'; readonly resume: ResumeOverlayState }
   | { readonly kind: 'approval'; readonly approval: ApprovalPromptState }
   | { readonly kind: 'userQuestion'; readonly userQuestion: QuestionPromptState }
@@ -202,6 +205,8 @@ export interface TuiState {
   readonly updateHint: string | undefined
   /** Live roster backing the docked agents-strip switcher (see `buildAgentsStripText`); empty when `ctx.subagents` isn't composed or the session has spawned no children yet. */
   readonly agentsStrip: readonly SubagentRow[]
+  /** The subagent child whose own transcript currently fills the primary scroll region, or `undefined` while the main transcript is shown — see `ViewingChildState`. */
+  readonly viewingChild: ViewingChildState | undefined
 }
 
 /** The `@`-mention dropdown's backing file list, loaded lazily on first use (see `ensureFileIndex` in `src/index.ts`). */
@@ -269,6 +274,7 @@ export class TuiStore {
       fileIndex: EMPTY_FILE_INDEX,
       updateHint: undefined,
       agentsStrip: [],
+      viewingChild: undefined,
     }
   }
 
@@ -439,16 +445,6 @@ export class TuiStore {
     })
   }
 
-  /** Open one child's own transcript to a fresh, loading view. */
-  openAgentDetail(init: { childId: string; label: string }): void {
-    this.set({
-      overlay: {
-        kind: 'agentDetail',
-        agentDetail: { childId: init.childId, label: init.label, events: [], live: false, busy: true, error: undefined },
-      },
-    })
-  }
-
   /** Open the `/resume` overlay to a fresh, loading listing. */
   openResume(): void {
     this.set({ overlay: { kind: 'resume', resume: { rows: [], selected: 0, busy: true, error: undefined } } })
@@ -490,16 +486,28 @@ export class TuiStore {
     this.updateAgentPresets({ selected: index })
   }
 
-  /** Patch the open agent-detail view's sub-state; a no-op once it's closed. */
-  updateAgentDetail(patch: Partial<AgentDetailOverlayState>): void {
-    if (this.state.overlay.kind !== 'agentDetail') return
-    this.set({ overlay: { kind: 'agentDetail', agentDetail: { ...this.state.overlay.agentDetail, ...patch } } })
+  /** Start viewing one child's own transcript in the primary scroll region, replacing whichever (if any) was shown before, to a fresh, loading view. */
+  startViewingChild(init: { childId: string; label: string }): void {
+    this.set({
+      viewingChild: { childId: init.childId, label: init.label, events: [], live: false, busy: true, error: undefined },
+    })
   }
 
-  /** Append one further live event to the open detail view's transcript; a no-op once the view has moved on (closed, or reopened against a different child). */
-  appendAgentDetailEvent(event: SessionEvent): void {
-    if (this.state.overlay.kind !== 'agentDetail') return
-    this.updateAgentDetail({ events: [...this.state.overlay.agentDetail.events, event] })
+  /** Patch the viewed child's sub-state; a no-op once viewing has stopped. */
+  updateViewingChild(patch: Partial<ViewingChildState>): void {
+    if (this.state.viewingChild === undefined) return
+    this.set({ viewingChild: { ...this.state.viewingChild, ...patch } })
+  }
+
+  /** Append one further live event to the viewed child's transcript; a no-op once viewing has moved on (stopped, or switched to a different child). */
+  appendViewingChildEvent(event: SessionEvent): void {
+    if (this.state.viewingChild === undefined) return
+    this.updateViewingChild({ events: [...this.state.viewingChild.events, event] })
+  }
+
+  /** Stop viewing a child's transcript, restoring the main transcript in the primary scroll region. */
+  stopViewingChild(): void {
+    this.set({ viewingChild: undefined })
   }
 
   /** Patch the open `/resume` overlay's sub-state; a no-op once it's closed. */

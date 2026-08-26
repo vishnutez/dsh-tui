@@ -87,6 +87,17 @@ describe('buildAgentsStripText', () => {
     expect(buildAgentsStripText([diagnosticRow('bad-1')], undefined)).toBe('')
   })
 
+  it('renders nothing once every subagent has finished — an ephemeral indicator, not a permanent log', () => {
+    expect(buildAgentsStripText([childRow('c1', 'Fix auth bug', 'inactive')], undefined)).toBe('')
+  })
+
+  it('still shows a finished child as long as a sibling from the same batch is still running', () => {
+    const rows = [childRow('c1', 'Fix auth bug', 'inactive'), childRow('c2', 'Reptile cold-blooded evolution', 'running')]
+    const text = buildAgentsStripText(rows, undefined)
+    expect(text).not.toBe('')
+    expect(text).toContain('Fix auth bug')
+  })
+
   it('always leads with a main segment, before any child', () => {
     const text = buildAgentsStripText([childRow('c1', 'Fix auth bug')], undefined)
     expect(text.indexOf('main')).toBeLessThan(text.indexOf('Fix auth bug'))

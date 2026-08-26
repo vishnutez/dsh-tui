@@ -516,8 +516,11 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
   }
 
   /**
-   * Open one subagent child's own transcript, read-only. A child still live
-   * in `ctx.sessions` (`sessions.get`) streams further events as they land,
+   * Start viewing one subagent child's own transcript, read-only, in the
+   * primary scroll region (see `TranscriptArea` in `TuiApp`) — the composer
+   * and agents strip stay live underneath the whole time. A child still
+   * live in `ctx.sessions` (`sessions.get`) streams further events as they
+   * land,
    * subscribed the same way the main session's own transcript is (see the
    * `session/event` listener in `attachSession`); a child that's already
    * finished — or vanished between `listChildren`'s snapshot and this call —
@@ -535,15 +538,15 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     const sessionId = SessionId(childId)
     const liveSession = sessions.get(sessionId)
     if (liveSession !== undefined) {
-      current.store.updateAgentDetail({ events: liveSession.events, live: true, busy: false, error: undefined })
+      current.store.updateViewingChild({ events: liveSession.events, live: true, busy: false, error: undefined })
       current.agentDetailUnsubscribe = ctx.on('session/event', (session, event) => {
         if (session !== liveSession) return
-        current.store.appendAgentDetailEvent(event)
+        current.store.appendViewingChildEvent(event)
       })
       return
     }
     if (sessionPersistence === undefined) {
-      current.store.updateAgentDetail({
+      current.store.updateViewingChild({
         busy: false,
         error: 'no durable session persistence in this profile — a finished subagent transcript is unavailable',
       })
@@ -551,9 +554,9 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     }
     try {
       const inspected = await sessionPersistence.inspect(sessionId)
-      current.store.updateAgentDetail({ events: inspected.events, live: false, busy: false, error: undefined })
+      current.store.updateViewingChild({ events: inspected.events, live: false, busy: false, error: undefined })
     } catch (error) {
-      current.store.updateAgentDetail({ busy: false, error: error instanceof Error ? error.message : String(error) })
+      current.store.updateViewingChild({ busy: false, error: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -1472,23 +1475,23 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
         if (childIds.length === 0) return
         // `undefined` stands for "main" — always the first position.
         const positions: (string | undefined)[] = [undefined, ...childIds]
-        const currentId = snapshot.overlay.kind === 'agentDetail' ? snapshot.overlay.agentDetail.childId : undefined
+        const currentId = snapshot.viewingChild?.childId
         // The extra `+ positions.length` keeps the modulo result non-negative for direction -1.
         const nextIndex = (positions.indexOf(currentId) + direction + positions.length) % positions.length
         const next = positions[nextIndex]
         if (next === undefined) {
           stopAgentDetailStream()
-          store.closeOverlay()
+          store.stopViewingChild()
           return
         }
         const row = snapshot.agentsStrip.find(candidate => candidate.id === next)
         const label = row !== undefined && row.kind === 'child' ? row.label : next
-        store.openAgentDetail({ childId: next, label })
+        store.startViewingChild({ childId: next, label })
         void loadAgentDetail(next)
       },
       closeAgentDetail() {
         stopAgentDetailStream()
-        store.closeOverlay()
+        store.stopViewingChild()
       },
 
       answerApproval(outcome) {
