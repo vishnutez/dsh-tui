@@ -158,10 +158,12 @@ export class CustomEditor extends Editor {
       this.actions.openToolCards()
       return
     }
-    // Advances the docked agents-strip switcher — a no-op with no subagent
-    // children, so this never surprises a session that doesn't use them.
-    if (matchesKey(data, Key.ctrl('t'))) {
-      this.actions.cycleAgentsStrip()
+    // Left/Right move the docked agents-strip switcher, but only while the
+    // prompt is empty — at that point neither key has anything to move a
+    // cursor through, so claiming them here can't take anything away from
+    // normal editing. A no-op with no subagent children.
+    if (this.getText() === '' && (matchesKey(data, Key.left) || matchesKey(data, Key.right))) {
+      this.actions.cycleAgentsStrip(matchesKey(data, Key.right) ? 1 : -1)
       return
     }
     // A leading `!` at an empty prompt is Claude Code's shell-mode

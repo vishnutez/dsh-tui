@@ -111,10 +111,11 @@ const AGENTS_STRIP_LABEL_LIMIT = 24
 /**
  * The docked subagent switcher, directly below the composer — Claude Code
  * CLI's own solid/hollow-circle session picker. `main` is always the first
- * segment; each subagent child follows in `listChildren` order, solid when
- * its own transcript overlay (`AgentDetailOverlay`) is the one currently
- * open. Renders nothing once the session has spawned no subagent children
- * yet, so a session that never touches subagents carries no extra row.
+ * segment; each subagent child follows, latest-spawned first (see
+ * `refreshAgentsStrip` in `index.ts`), solid when its own transcript
+ * overlay (`AgentDetailOverlay`) is the one currently open. Renders nothing
+ * once the session has spawned no subagent children yet, so a session that
+ * never touches subagents carries no extra row.
  * @param rows - the live agents-strip roster (`TuiState.agentsStrip`); only `child` rows render as segments — a `diagnostic` row has no transcript to switch to.
  * @param viewingChildId - the open `AgentDetailOverlay`'s child id, or `undefined` while the main transcript is shown (see `cycleAgentsStrip` in `index.ts`).
  */
@@ -130,7 +131,7 @@ export function buildAgentsStripText(rows: readonly SubagentRow[], viewingChildI
     segment(undefined, 'main'),
     ...children.map(child => segment(child.id, truncate(child.label, AGENTS_STRIP_LABEL_LIMIT))),
   ]
-  return `${segments.join('  ')}${dim('  (ctrl+t to switch)')}`
+  return `${segments.join('  ')}${dim('  (←/→ to switch, when prompt is empty)')}`
 }
 
 /** Human label for one durable goal phase — the single source of truth shared by the `/goal` notice (`index.ts`) and this strip. */

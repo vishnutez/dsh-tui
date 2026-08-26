@@ -91,8 +91,8 @@ export interface TuiActions {
   /** Apply a different agent preset to the current (blank) session. */
   applyAgentPreset(id: string): void
 
-  /** Advance the docked agents-strip switcher to the next session (main, then each subagent child in listChildren order, wrapping around), opening/closing the agent-detail view as needed. A no-op while the session has spawned no subagent children. */
-  cycleAgentsStrip(): void
+  /** Move the docked agents-strip switcher by one position (main, then each subagent child latest-spawned first, wrapping around), opening/closing the agent-detail view as needed. `1` moves forward, `-1` moves back. A no-op while the session has spawned no subagent children. */
+  cycleAgentsStrip(direction: 1 | -1): void
   /** Close the open agent-detail view, returning to the main transcript. */
   closeAgentDetail(): void
 

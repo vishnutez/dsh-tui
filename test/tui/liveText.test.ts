@@ -116,8 +116,8 @@ describe('buildAgentsStripText', () => {
     expect(text).toContain('…')
   })
 
-  it('includes the ctrl+t hint', () => {
-    expect(buildAgentsStripText([childRow('c1', 'Fix auth bug')], undefined)).toContain('ctrl+t')
+  it('includes the arrow-key hint', () => {
+    expect(buildAgentsStripText([childRow('c1', 'Fix auth bug')], undefined)).toContain('←/→')
   })
 })
 

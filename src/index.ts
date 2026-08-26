@@ -979,11 +979,16 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
      * `TuiApp`) from `ctx.subagents.listChildren`. Best-effort: a transient
      * failure just leaves the strip as it was — the next `tool/call`/
      * `tool/result` on this session retries.
+     *
+     * `listChildren` orders its result oldest-created first; reversed here
+     * so the strip reads latest-spawned first (a still-running child is
+     * ordinarily among the most recent, so this alone surfaces it without
+     * pinning it separately).
      */
     const refreshAgentsStrip = (): void => {
       if (subagents === undefined) return
       void subagents.listChildren(agent.session.id)
-        .then(entries => store.setAgentsStrip(entries.map(toSubagentRow)))
+        .then(entries => store.setAgentsStrip(entries.toReversed().map(toSubagentRow)))
         .catch(() => {
           // Best-effort background refresh with no user-facing error surface.
         })
@@ -1461,14 +1466,16 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
           })
       },
 
-      cycleAgentsStrip() {
+      cycleAgentsStrip(direction) {
         const snapshot = store.getSnapshot()
         const childIds = snapshot.agentsStrip.filter(row => row.kind === 'child').map(row => row.id)
         if (childIds.length === 0) return
         // `undefined` stands for "main" — always the first position.
         const positions: (string | undefined)[] = [undefined, ...childIds]
         const currentId = snapshot.overlay.kind === 'agentDetail' ? snapshot.overlay.agentDetail.childId : undefined
-        const next = positions[(positions.indexOf(currentId) + 1) % positions.length]
+        // The extra `+ positions.length` keeps the modulo result non-negative for direction -1.
+        const nextIndex = (positions.indexOf(currentId) + direction + positions.length) % positions.length
+        const next = positions[nextIndex]
         if (next === undefined) {
           stopAgentDetailStream()
           store.closeOverlay()
