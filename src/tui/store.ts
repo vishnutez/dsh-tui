@@ -52,26 +52,18 @@ export interface AgentPresetsOverlayState {
   readonly error: string | undefined
 }
 
-/** Overlay-owned state for the `/agents` subagent-visibility screen. */
-export interface AgentsOverlayState {
-  /** Joined direct-children listing; empty while the first load is still in flight (see `busy`). */
-  readonly rows: readonly SubagentRow[]
-  readonly selected: number
-  readonly busy: boolean
-  readonly error: string | undefined
-}
-
 /**
- * Overlay-owned state for one `/agents` row's own read-only transcript —
- * drilled into from the list, mirroring Claude Code CLI's subagent-focus
- * view. `live: true` means `events` is still receiving further entries as
- * the child runs (see `subscribeAgentDetail`/`appendAgentDetailEvent`);
- * `false` means it's a fixed snapshot of an already-finished child.
+ * Overlay-owned state for one subagent child's own read-only transcript —
+ * opened from the docked agents-strip switcher (see `buildAgentsStripText`/
+ * `cycleAgentsStrip`), mirroring Claude Code CLI's subagent-focus view.
+ * `live: true` means `events` is still receiving further entries as the
+ * child runs (see `subscribeAgentDetail`/`appendAgentDetailEvent`); `false`
+ * means it's a fixed snapshot of an already-finished child.
  */
 export interface AgentDetailOverlayState {
   /** The subagent child's session id. */
   readonly childId: string
-  /** Display label carried over from the `/agents` list row. */
+  /** Display label carried over from the agents-strip roster. */
   readonly label: string
   /** The child's own session log so far. */
   readonly events: readonly SessionEvent[]
@@ -103,7 +95,6 @@ export type Overlay =
   | { readonly kind: 'context' }
   | { readonly kind: 'plugins'; readonly rows: readonly PluginRow[] }
   | { readonly kind: 'agentPresets'; readonly agentPresets: AgentPresetsOverlayState }
-  | { readonly kind: 'agents'; readonly agents: AgentsOverlayState }
   | { readonly kind: 'agentDetail'; readonly agentDetail: AgentDetailOverlayState }
   | { readonly kind: 'resume'; readonly resume: ResumeOverlayState }
   | { readonly kind: 'approval'; readonly approval: ApprovalPromptState }
@@ -209,6 +200,8 @@ export interface TuiState {
   readonly fileIndex: FileIndexState
   /** A newer npm-published version of this package, once the startup registry check (`src/updateCheck.ts`) resolves one; `undefined` while unchecked or already current. */
   readonly updateHint: string | undefined
+  /** Live roster backing the docked agents-strip switcher (see `buildAgentsStripText`); empty when `ctx.subagents` isn't composed or the session has spawned no children yet. */
+  readonly agentsStrip: readonly SubagentRow[]
 }
 
 /** The `@`-mention dropdown's backing file list, loaded lazily on first use (see `ensureFileIndex` in `src/index.ts`). */
@@ -275,6 +268,7 @@ export class TuiStore {
       shellHistory: [],
       fileIndex: EMPTY_FILE_INDEX,
       updateHint: undefined,
+      agentsStrip: [],
     }
   }
 
@@ -445,11 +439,6 @@ export class TuiStore {
     })
   }
 
-  /** Open the `/agents` overlay to a fresh, loading listing. */
-  openAgents(): void {
-    this.set({ overlay: { kind: 'agents', agents: { rows: [], selected: 0, busy: true, error: undefined } } })
-  }
-
   /** Open one child's own transcript to a fresh, loading view. */
   openAgentDetail(init: { childId: string; label: string }): void {
     this.set({
@@ -501,18 +490,7 @@ export class TuiStore {
     this.updateAgentPresets({ selected: index })
   }
 
-  /** Patch the open `/agents` overlay's sub-state; a no-op once it's closed. */
-  updateAgents(patch: Partial<AgentsOverlayState>): void {
-    if (this.state.overlay.kind !== 'agents') return
-    this.set({ overlay: { kind: 'agents', agents: { ...this.state.overlay.agents, ...patch } } })
-  }
-
-  /** Move the `/agents` list's selection cursor. */
-  selectAgentRow(index: number): void {
-    this.updateAgents({ selected: index })
-  }
-
-  /** Patch the open `/agents` detail view's sub-state; a no-op once it's closed. */
+  /** Patch the open agent-detail view's sub-state; a no-op once it's closed. */
   updateAgentDetail(patch: Partial<AgentDetailOverlayState>): void {
     if (this.state.overlay.kind !== 'agentDetail') return
     this.set({ overlay: { kind: 'agentDetail', agentDetail: { ...this.state.overlay.agentDetail, ...patch } } })
@@ -549,6 +527,11 @@ export class TuiStore {
   /** Record a newer npm-published version found by the startup update check; persists for the session (not cleared by `/clear`'s notice reset) until dismissed by a fresh check finding none. */
   setUpdateHint(version: string | undefined): void {
     this.set({ updateHint: version })
+  }
+
+  /** Refresh the docked agents-strip roster; see `refreshAgentsStrip` in `index.ts` for when this fires. */
+  setAgentsStrip(rows: readonly SubagentRow[]): void {
+    this.set({ agentsStrip: rows })
   }
 
   private set(partial: Partial<TuiState>): void {

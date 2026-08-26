@@ -48,7 +48,7 @@ import type { RenderOptions } from '../render.js'
 import { formatEvent, formatPendingToolCalls, formatShellRun, formatShellRunLive, formatStreamingText } from '../render.js'
 import { buildBannerText } from './bannerText.js'
 import { buildContextLine, buildStatsLine } from './statsFormat.js'
-import { buildGoalBarText, buildPermissionText, buildQueuedText, buildStatusBarText, buildTerminalTitle, buildUpdateHintText } from './liveText.js'
+import { buildAgentsStripText, buildGoalBarText, buildPermissionText, buildQueuedText, buildStatusBarText, buildTerminalTitle, buildUpdateHintText } from './liveText.js'
 import { createTranscriptLine, DynamicText, padTranscriptText } from './text.js'
 import { CustomEditor } from './CustomEditor.js'
 import { Spinner } from './Spinner.js'
@@ -61,7 +61,6 @@ import { ToolCardsOverlay } from './toolCards/ToolCardsOverlay.js'
 import { ContextOverlay } from './context/ContextOverlay.js'
 import { PluginsOverlay } from './plugins/PluginsOverlay.js'
 import { AgentPresetsOverlay } from './agentPresets/AgentPresetsOverlay.js'
-import { AgentsOverlay } from './agents/AgentsOverlay.js'
 import { AgentDetailOverlay } from './agents/AgentDetailOverlay.js'
 import { ResumeOverlay } from './resume/ResumeOverlay.js'
 import { ApprovalOverlay } from './interaction/ApprovalOverlay.js'
@@ -286,6 +285,15 @@ class TuiApp implements TuiHandle {
         spinnerChar: this.spinner.current(),
       })
     })
+    // Docked directly below the composer, Claude Code CLI-style — a
+    // solid/hollow-circle switcher for the session's subagent children, kept
+    // fresh by `refreshAgentsStrip` in `index.ts`. Renders nothing until the
+    // session spawns its first child.
+    const agentsStripText = new DynamicText(() => {
+      const state = store.getSnapshot()
+      const viewingChildId = state.overlay.kind === 'agentDetail' ? state.overlay.agentDetail.childId : undefined
+      return buildAgentsStripText(state.agentsStrip, viewingChildId)
+    })
     const permissionText = new DynamicText(() => buildPermissionText(store.getSnapshot().permission))
     const updateHintText = new DynamicText(() => buildUpdateHintText(options.version, store.getSnapshot().updateHint))
     const statsLineText = new DynamicText(() => {
@@ -306,6 +314,7 @@ class TuiApp implements TuiHandle {
         statusBarText,
         this.approvalSlot,
         this.editor,
+        agentsStripText,
         permissionText,
         updateHintText,
         statsLineText,
@@ -405,8 +414,6 @@ class TuiApp implements TuiHandle {
         return new PluginsOverlay(this.tui, overlay.rows, actions)
       case 'agentPresets':
         return new AgentPresetsOverlay(store, actions)
-      case 'agents':
-        return new AgentsOverlay(this.tui, store, actions)
       case 'agentDetail':
         return new AgentDetailOverlay(this.tui, store, actions, getTool)
       case 'resume':

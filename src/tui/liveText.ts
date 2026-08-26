@@ -15,9 +15,11 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { truncate } from '../render.js'
 import { stripSessionIdPrefix } from '../sessionId.js'
 import type { PermissionState } from './store.js'
+import type { SubagentRow } from './agents/types.js'
 import { theme, fg } from './theme.js'
 
 const dim = fg(theme.muted)
+const success = fg(theme.success)
 const accent = fg(theme.accent)
 const warning = fg(theme.warning)
 
@@ -101,6 +103,34 @@ export function buildPermissionText(permission: PermissionState | undefined): st
   const label = PERMISSION_LABELS[permission.current] ?? permission.current
   const color = fg(PERMISSION_COLORS[permission.current] ?? theme.muted)
   return `${color(`${icon} ${label}`)}${dim(' (shift+tab to cycle)')}`
+}
+
+/** Per-segment label cap, so one long subagent title can't dominate the strip's single line. */
+const AGENTS_STRIP_LABEL_LIMIT = 24
+
+/**
+ * The docked subagent switcher, directly below the composer — Claude Code
+ * CLI's own solid/hollow-circle session picker. `main` is always the first
+ * segment; each subagent child follows in `listChildren` order, solid when
+ * its own transcript overlay (`AgentDetailOverlay`) is the one currently
+ * open. Renders nothing once the session has spawned no subagent children
+ * yet, so a session that never touches subagents carries no extra row.
+ * @param rows - the live agents-strip roster (`TuiState.agentsStrip`); only `child` rows render as segments — a `diagnostic` row has no transcript to switch to.
+ * @param viewingChildId - the open `AgentDetailOverlay`'s child id, or `undefined` while the main transcript is shown (see `cycleAgentsStrip` in `index.ts`).
+ */
+export function buildAgentsStripText(rows: readonly SubagentRow[], viewingChildId: string | undefined): string {
+  const children = rows.filter((row): row is Extract<SubagentRow, { kind: 'child' }> => row.kind === 'child')
+  if (children.length === 0) return ''
+  const segment = (id: string | undefined, label: string): string => {
+    const active = id === viewingChildId
+    const circle = active ? success('●') : dim('○')
+    return `${circle} ${active ? label : dim(label)}`
+  }
+  const segments = [
+    segment(undefined, 'main'),
+    ...children.map(child => segment(child.id, truncate(child.label, AGENTS_STRIP_LABEL_LIMIT))),
+  ]
+  return `${segments.join('  ')}${dim('  (ctrl+t to switch)')}`
 }
 
 /** Human label for one durable goal phase — the single source of truth shared by the `/goal` notice (`index.ts`) and this strip. */

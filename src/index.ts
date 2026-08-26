@@ -170,7 +170,7 @@ function sessionBlank(session: Session): boolean {
   return !session.events.some(event => event.type === 'turn/start')
 }
 
-/** Join one `ctx.subagents.listChildren()` entry into the `/agents` overlay's plain row shape. */
+/** Join one `ctx.subagents.listChildren()` entry into the agents-strip's plain row shape. */
 function toSubagentRow(entry: SubagentListEntry): SubagentRow {
   if (entry.kind === 'diagnostic') return { kind: 'diagnostic', id: entry.id, diagnostic: entry.reason }
   return {
@@ -325,8 +325,8 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
   // /presets is unavailable instead of refusing to start.
   const presets = ctx.get('agentPresets')
   // Same optional-service pattern: a profile without the subagent runtime
-  // just tells the reader /agents is unavailable instead of refusing to
-  // start.
+  // just leaves the docked agents-strip switcher permanently empty instead
+  // of refusing to start.
   const subagents = ctx.get('subagents')
   // Same optional-service pattern: a profile without durable session
   // persistence just tells the reader /resume's picker is unavailable
@@ -509,18 +509,7 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     }
   }
 
-  /** Fetch the current session's direct subagent children and refresh the open `/agents` overlay's row list. */
-  async function loadSubagents(): Promise<void> {
-    if (subagents === undefined) return
-    try {
-      const entries = await subagents.listChildren(current.agent.session.id)
-      current.store.updateAgents({ rows: entries.map(toSubagentRow), busy: false, error: undefined })
-    } catch (error) {
-      current.store.updateAgents({ busy: false, error: error instanceof Error ? error.message : String(error) })
-    }
-  }
-
-  /** Stop the live event subscription backing an open `/agents` detail view, if any; safe to call when none is active. */
+  /** Stop the live event subscription backing an open agent-detail view, if any; safe to call when none is active. */
   function stopAgentDetailStream(): void {
     current.agentDetailUnsubscribe?.()
     current.agentDetailUnsubscribe = undefined
@@ -699,7 +688,7 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     readonly disposeAgent: () => Promise<void>
     readonly unsubscribers: readonly (() => unknown)[]
     closing: boolean
-    /** Disposer for an open `/agents` detail view's live `session/event` subscription, set by `loadAgentDetail`/cleared by `stopAgentDetailStream`; `undefined` when no detail view is watching a running child. */
+    /** Disposer for an open agent-detail view's live `session/event` subscription, set by `loadAgentDetail`/cleared by `stopAgentDetailStream`; `undefined` when no detail view is watching a running child. */
     agentDetailUnsubscribe: (() => unknown) | undefined
   }
 
@@ -985,6 +974,22 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     store.setPreset(currentPresetState(agent.session))
     if (presetNotice !== undefined) store.setNotice(presetNotice)
 
+    /**
+     * Refresh the docked agents-strip roster (see `buildAgentsStripText` in
+     * `TuiApp`) from `ctx.subagents.listChildren`. Best-effort: a transient
+     * failure just leaves the strip as it was — the next `tool/call`/
+     * `tool/result` on this session retries.
+     */
+    const refreshAgentsStrip = (): void => {
+      if (subagents === undefined) return
+      void subagents.listChildren(agent.session.id)
+        .then(entries => store.setAgentsStrip(entries.map(toSubagentRow)))
+        .catch(() => {
+          // Best-effort background refresh with no user-facing error surface.
+        })
+    }
+    refreshAgentsStrip() // Seed: a --resume'd session may already have children.
+
     const resnapshotQueue = (): void => {
       store.setQueued([...agent.inbox.nextStep, ...agent.inbox.nextTurn])
     }
@@ -997,6 +1002,13 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
         }
         if (event.type === 'agent-preset/selected') {
           store.setPreset(currentPresetState(agent.session))
+        }
+        // A subagent child is created and finished via this session's own
+        // tool/call+tool/result pair (spawning is a tool call) — the
+        // harness exposes no dedicated child-lifecycle event to subscribe
+        // to instead.
+        if (event.type === 'tool/call' || event.type === 'tool/result') {
+          refreshAgentsStrip()
         }
       }),
       ctx.on('agent/status', (payload) => {
@@ -1449,31 +1461,27 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
           })
       },
 
-      openAgents() {
-        if (subagents === undefined) {
-          store.setNotice('subagents are not available in this profile')
+      cycleAgentsStrip() {
+        const snapshot = store.getSnapshot()
+        const childIds = snapshot.agentsStrip.filter(row => row.kind === 'child').map(row => row.id)
+        if (childIds.length === 0) return
+        // `undefined` stands for "main" — always the first position.
+        const positions: (string | undefined)[] = [undefined, ...childIds]
+        const currentId = snapshot.overlay.kind === 'agentDetail' ? snapshot.overlay.agentDetail.childId : undefined
+        const next = positions[(positions.indexOf(currentId) + 1) % positions.length]
+        if (next === undefined) {
+          stopAgentDetailStream()
+          store.closeOverlay()
           return
         }
-        store.openAgents()
-        void loadSubagents()
-      },
-      closeAgents() {
-        store.closeOverlay()
-      },
-      selectAgentRow(index) {
-        store.selectAgentRow(index)
-      },
-      openAgentDetail(childId) {
-        const overlay = store.getSnapshot().overlay
-        const row = overlay.kind === 'agents' ? overlay.agents.rows.find(candidate => candidate.id === childId) : undefined
-        const label = row !== undefined && row.kind === 'child' ? row.label : childId
-        store.openAgentDetail({ childId, label })
-        void loadAgentDetail(childId)
+        const row = snapshot.agentsStrip.find(candidate => candidate.id === next)
+        const label = row !== undefined && row.kind === 'child' ? row.label : next
+        store.openAgentDetail({ childId: next, label })
+        void loadAgentDetail(next)
       },
       closeAgentDetail() {
         stopAgentDetailStream()
-        store.openAgents()
-        void loadSubagents()
+        store.closeOverlay()
       },
 
       answerApproval(outcome) {

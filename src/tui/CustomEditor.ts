@@ -158,6 +158,12 @@ export class CustomEditor extends Editor {
       this.actions.openToolCards()
       return
     }
+    // Advances the docked agents-strip switcher — a no-op with no subagent
+    // children, so this never surprises a session that doesn't use them.
+    if (matchesKey(data, Key.ctrl('t'))) {
+      this.actions.cycleAgentsStrip()
+      return
+    }
     // A leading `!` at an empty prompt is Claude Code's shell-mode
     // convention: it's consumed rather than inserted, so Backspace on an
     // empty shell-mode buffer (which would otherwise no-op) exits it — same

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
-import { buildGoalBarText, buildTerminalTitle, buildUpdateHintText } from '../../src/tui/liveText.js'
+import type { SubagentRow } from '../../src/tui/agents/types.js'
+import { buildAgentsStripText, buildGoalBarText, buildTerminalTitle, buildUpdateHintText } from '../../src/tui/liveText.js'
 
 /** A minimal 'goal' projection fixture; only the fields the strip reads are meaningful. */
 function projection(over: Partial<GoalProjection['goal']> = {}): GoalProjection {
@@ -66,6 +67,57 @@ describe('buildTerminalTitle', () => {
 
   it('suffixes the accepted session title with the product name', () => {
     expect(buildTerminalTitle('Read-only agent preset creation')).toBe('Read-only agent preset creation — dsh-tui')
+  })
+})
+
+function childRow(id: string, label: string, activity: 'running' | 'inactive' = 'running'): SubagentRow {
+  return { kind: 'child', id, label, mode: 'continuable', activity, hasChildren: false }
+}
+
+function diagnosticRow(id: string): SubagentRow {
+  return { kind: 'diagnostic', id, diagnostic: 'corrupt' }
+}
+
+describe('buildAgentsStripText', () => {
+  it('renders nothing for a session with no subagent children', () => {
+    expect(buildAgentsStripText([], undefined)).toBe('')
+  })
+
+  it('renders nothing when only diagnostic rows exist — none has a transcript to switch to', () => {
+    expect(buildAgentsStripText([diagnosticRow('bad-1')], undefined)).toBe('')
+  })
+
+  it('always leads with a main segment, before any child', () => {
+    const text = buildAgentsStripText([childRow('c1', 'Fix auth bug')], undefined)
+    expect(text.indexOf('main')).toBeLessThan(text.indexOf('Fix auth bug'))
+  })
+
+  it('shows every child label, in listChildren order', () => {
+    const rows = [childRow('c1', 'Fix auth bug'), childRow('c2', 'Reptile cold-blooded evolution')]
+    const text = buildAgentsStripText(rows, undefined)
+    expect(text).toContain('Fix auth bug')
+    expect(text).toContain('Reptile cold-blooded evolution'.slice(0, 23))
+  })
+
+  it('marks main solid while no detail view is open', () => {
+    const text = buildAgentsStripText([childRow('c1', 'Fix auth bug')], undefined)
+    expect(text).toContain('●')
+  })
+
+  it('marks the viewed child solid instead of main once its detail view is open', () => {
+    const text = buildAgentsStripText([childRow('c1', 'Fix auth bug')], 'c1')
+    // One solid circle for the viewed child, one hollow circle for main.
+    expect(text.split('●').length - 1).toBe(1)
+    expect(text.split('○').length - 1).toBe(1)
+  })
+
+  it('truncates a long label to the strip cap', () => {
+    const text = buildAgentsStripText([childRow('c1', 'x'.repeat(200))], undefined)
+    expect(text).toContain('…')
+  })
+
+  it('includes the ctrl+t hint', () => {
+    expect(buildAgentsStripText([childRow('c1', 'Fix auth bug')], undefined)).toContain('ctrl+t')
   })
 })
 

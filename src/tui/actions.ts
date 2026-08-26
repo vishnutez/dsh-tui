@@ -91,15 +91,9 @@ export interface TuiActions {
   /** Apply a different agent preset to the current (blank) session. */
   applyAgentPreset(id: string): void
 
-  /** Open the `/agents` subagent-visibility overlay and start loading the current session's direct children. */
-  openAgents(): void
-  /** Close the `/agents` overlay. */
-  closeAgents(): void
-  /** Move the `/agents` list's selection cursor. */
-  selectAgentRow(index: number): void
-  /** Open the selected row's own transcript, read-only — live-streaming for a running child, a fixed persisted snapshot for a finished one. */
-  openAgentDetail(childId: string): void
-  /** Close the `/agents` detail view, returning to the list. */
+  /** Advance the docked agents-strip switcher to the next session (main, then each subagent child in listChildren order, wrapping around), opening/closing the agent-detail view as needed. A no-op while the session has spawned no subagent children. */
+  cycleAgentsStrip(): void
+  /** Close the open agent-detail view, returning to the main transcript. */
   closeAgentDetail(): void
 
   /** Open the `/resume` session picker and start loading this cwd's past sessions. */
