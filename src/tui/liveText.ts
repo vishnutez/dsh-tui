@@ -108,19 +108,43 @@ export function buildPermissionText(permission: PermissionState | undefined): st
 /** Per-segment label cap, so one long subagent title can't dominate the strip's single line. */
 const AGENTS_STRIP_LABEL_LIMIT = 24
 
+/** Children shown at once — main plus this many, five segments total, so the strip never grows past one glanceable line. */
+const AGENTS_STRIP_MAX_VISIBLE_CHILDREN = 4
+
+/**
+ * A window of at most `size` children out of `children`, sliding to keep
+ * `viewedIndex` inside it (biased slightly toward the front, so cycling
+ * forward reveals more of what's ahead) — `main` never scrolls out of view,
+ * only the child window does, and it's positioned fresh from `viewedIndex`
+ * on every call rather than carried over from a previous render, so it
+ * always reflects exactly where the reader currently is.
+ */
+function slidingWindow<T>(children: readonly T[], viewedIndex: number, size: number): { start: number; end: number } {
+  if (children.length <= size) return { start: 0, end: children.length }
+  const centered = viewedIndex === -1 ? 0 : viewedIndex - Math.floor((size - 1) / 2)
+  const start = Math.max(0, Math.min(centered, children.length - size))
+  return { start, end: start + size }
+}
+
 /**
  * The docked subagent switcher, directly below the composer — Claude Code
  * CLI's own solid/hollow-circle session picker. `main` is always the first
- * segment; each subagent child follows, latest-spawned first (see
- * `refreshAgentsStrip` in `index.ts`), solid when its own transcript is the
- * one currently filling the primary scroll region (`TuiState.viewingChild`).
- * Renders nothing unless at least one child is currently `running` —
- * mirroring Claude Code CLI's own ephemeral background-task indicator, this
- * is about the current batch of active work, not a permanent log of every
- * subagent the session has ever spawned. A child that's already finished
- * still shows (and stays reachable) as long as a sibling from the same
- * batch is still running; once the whole batch settles, the strip
- * disappears entirely, including the finished siblings' segments.
+ * segment and never scrolls away; up to `AGENTS_STRIP_MAX_VISIBLE_CHILDREN`
+ * subagent children follow, latest-spawned first (see `refreshAgentsStrip`
+ * in `index.ts`), solid when its own transcript is the one currently
+ * filling the primary scroll region (`TuiState.viewingChild`). With more
+ * children than fit, a dim `‹N`/`N›` count marks however many sit before/
+ * after the visible window instead of just letting them drop off the line
+ * unannounced — and the window itself slides to keep whichever child is
+ * currently viewed inside it, so every child stays reachable by cycling
+ * (`cycleAgentsStrip`) even past the fifth. Renders nothing unless at least
+ * one child is currently `running` — mirroring Claude Code CLI's own
+ * ephemeral background-task indicator, this is about the current batch of
+ * active work, not a permanent log of every subagent the session has ever
+ * spawned. A child that's already finished still shows (and stays
+ * reachable) as long as a sibling from the same batch is still running;
+ * once the whole batch settles, the strip disappears entirely, including
+ * the finished siblings' segments.
  * @param rows - the live agents-strip roster (`TuiState.agentsStrip`); only `child` rows render as segments — a `diagnostic` row has no transcript to switch to.
  * @param viewingChildId - `TuiState.viewingChild`'s child id, or `undefined` while the main transcript is shown (see `cycleAgentsStrip` in `index.ts`).
  */
@@ -132,9 +156,13 @@ export function buildAgentsStripText(rows: readonly SubagentRow[], viewingChildI
     const circle = active ? success('●') : dim('○')
     return `${circle} ${active ? label : dim(label)}`
   }
+  const viewedIndex = viewingChildId === undefined ? -1 : children.findIndex(child => child.id === viewingChildId)
+  const { start, end } = slidingWindow(children, viewedIndex, AGENTS_STRIP_MAX_VISIBLE_CHILDREN)
   const segments = [
     segment(undefined, 'main'),
-    ...children.map(child => segment(child.id, truncate(child.label, AGENTS_STRIP_LABEL_LIMIT))),
+    ...(start > 0 ? [dim(`‹${start}`)] : []),
+    ...children.slice(start, end).map(child => segment(child.id, truncate(child.label, AGENTS_STRIP_LABEL_LIMIT))),
+    ...(end < children.length ? [dim(`${children.length - end}›`)] : []),
   ]
   return `${segments.join('  ')}${dim('  (←/→ to switch, when prompt is empty)')}`
 }

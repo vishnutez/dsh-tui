@@ -130,6 +130,38 @@ describe('buildAgentsStripText', () => {
   it('includes the arrow-key hint', () => {
     expect(buildAgentsStripText([childRow('c1', 'Fix auth bug')], undefined)).toContain('←/→')
   })
+
+  function manyChildren(count: number): SubagentRow[] {
+    return Array.from({ length: count }, (_unused, i) => childRow(`c${i}`, `child-${i}`))
+  }
+
+  it('shows every child with no hidden-count markers when 4 or fewer exist', () => {
+    const text = buildAgentsStripText(manyChildren(4), undefined)
+    for (let i = 0; i < 4; i++) expect(text).toContain(`child-${i}`)
+    expect(text).not.toContain('‹')
+    expect(text).not.toContain('›')
+  })
+
+  it('windows down to at most 4 children when more exist, marking the rest hidden', () => {
+    const text = buildAgentsStripText(manyChildren(6), undefined)
+    // No selection: the window defaults to the front (indices 0-3).
+    for (let i = 0; i < 4; i++) expect(text).toContain(`child-${i}`)
+    expect(text).not.toContain('child-4')
+    expect(text).not.toContain('child-5')
+    expect(text).toContain('2›') // 2 children past the window's end.
+    expect(text).not.toContain('‹')
+  })
+
+  it('slides the window to keep the viewed child visible even past the front 4', () => {
+    const text = buildAgentsStripText(manyChildren(6), 'c5')
+    expect(text).toContain('child-5')
+    expect(text).toContain('‹') // some earlier children are now hidden instead.
+  })
+
+  it('keeps main in the strip regardless of which children the window scrolls past', () => {
+    const text = buildAgentsStripText(manyChildren(6), 'c5')
+    expect(text).toContain('main')
+  })
 })
 
 describe('buildUpdateHintText', () => {
