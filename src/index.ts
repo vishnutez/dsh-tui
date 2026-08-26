@@ -520,6 +520,48 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     }
   }
 
+  /** Stop the live event subscription backing an open `/agents` detail view, if any; safe to call when none is active. */
+  function stopAgentDetailStream(): void {
+    current.agentDetailUnsubscribe?.()
+    current.agentDetailUnsubscribe = undefined
+  }
+
+  /**
+   * Open one subagent child's own transcript, read-only. A child still live
+   * in `ctx.sessions` (`sessions.get`) streams further events as they land,
+   * subscribed the same way the main session's own transcript is (see the
+   * `session/event` listener in `attachSession`); a child that's already
+   * finished — or vanished between `listChildren`'s snapshot and this call —
+   * falls back to its persisted log via `ctx.sessionPersistence`, the same
+   * call `loadResumeSessions` makes.
+   */
+  async function loadAgentDetail(childId: string): Promise<void> {
+    stopAgentDetailStream()
+    const sessionId = SessionId(ensureSessionIdPrefix(childId))
+    const liveSession = sessions.get(sessionId)
+    if (liveSession !== undefined) {
+      current.store.updateAgentDetail({ events: liveSession.events, live: true, busy: false, error: undefined })
+      current.agentDetailUnsubscribe = ctx.on('session/event', (session, event) => {
+        if (session !== liveSession) return
+        current.store.appendAgentDetailEvent(event)
+      })
+      return
+    }
+    if (sessionPersistence === undefined) {
+      current.store.updateAgentDetail({
+        busy: false,
+        error: 'no durable session persistence in this profile — a finished subagent transcript is unavailable',
+      })
+      return
+    }
+    try {
+      const inspected = await sessionPersistence.inspect(sessionId)
+      current.store.updateAgentDetail({ events: inspected.events, live: false, busy: false, error: undefined })
+    } catch (error) {
+      current.store.updateAgentDetail({ busy: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
   /**
    * Fetch this cwd's past sessions (headers only — cheap, no full-log parse)
    * and refresh the open `/resume` overlay's row list. A header alone has no
@@ -651,6 +693,8 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     readonly disposeAgent: () => Promise<void>
     readonly unsubscribers: readonly (() => unknown)[]
     closing: boolean
+    /** Disposer for an open `/agents` detail view's live `session/event` subscription, set by `loadAgentDetail`/cleared by `stopAgentDetailStream`; `undefined` when no detail view is watching a running child. */
+    agentDetailUnsubscribe: (() => unknown) | undefined
   }
 
   // --- In-terminal approval/question answerers ------------------------------
@@ -1410,6 +1454,21 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
       closeAgents() {
         store.closeOverlay()
       },
+      selectAgentRow(index) {
+        store.selectAgentRow(index)
+      },
+      openAgentDetail(childId) {
+        const overlay = store.getSnapshot().overlay
+        const row = overlay.kind === 'agents' ? overlay.agents.rows.find(candidate => candidate.id === childId) : undefined
+        const label = row !== undefined && row.kind === 'child' ? row.label : childId
+        store.openAgentDetail({ childId, label })
+        void loadAgentDetail(childId)
+      },
+      closeAgentDetail() {
+        stopAgentDetailStream()
+        store.openAgents()
+        void loadSubagents()
+      },
 
       answerApproval(outcome) {
         if (activeInteraction?.kind !== 'approval') return
@@ -1438,7 +1497,7 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     })
     mounted.instance = instance
 
-    return { agent, store, instance, disposeAgent: dispose, unsubscribers, closing: false }
+    return { agent, store, instance, disposeAgent: dispose, unsubscribers, closing: false, agentDetailUnsubscribe: undefined }
   }
 
   let current = await attachSession(config.resume)
@@ -1474,6 +1533,7 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
     await old.agent.whenIdle()
     await sessions.flush(old.agent.session)
     await old.disposeAgent()
+    old.agentDetailUnsubscribe?.()
     for (const off of old.unsubscribers) off()
     // `preserveScreen: true`: a fresh `TuiAltScreen` immediately re-enters
     // the alternate screen over the same terminal, so the old instance skips

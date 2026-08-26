@@ -95,6 +95,12 @@ export interface TuiActions {
   openAgents(): void
   /** Close the `/agents` overlay. */
   closeAgents(): void
+  /** Move the `/agents` list's selection cursor. */
+  selectAgentRow(index: number): void
+  /** Open the selected row's own transcript, read-only — live-streaming for a running child, a fixed persisted snapshot for a finished one. */
+  openAgentDetail(childId: string): void
+  /** Close the `/agents` detail view, returning to the list. */
+  closeAgentDetail(): void
 
   /** Open the `/resume` session picker and start loading this cwd's past sessions. */
   openResume(): void

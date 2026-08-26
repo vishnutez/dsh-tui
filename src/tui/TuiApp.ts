@@ -62,6 +62,7 @@ import { ContextOverlay } from './context/ContextOverlay.js'
 import { PluginsOverlay } from './plugins/PluginsOverlay.js'
 import { AgentPresetsOverlay } from './agentPresets/AgentPresetsOverlay.js'
 import { AgentsOverlay } from './agents/AgentsOverlay.js'
+import { AgentDetailOverlay } from './agents/AgentDetailOverlay.js'
 import { ResumeOverlay } from './resume/ResumeOverlay.js'
 import { ApprovalOverlay } from './interaction/ApprovalOverlay.js'
 import { QuestionOverlay } from './interaction/QuestionOverlay.js'
@@ -406,6 +407,8 @@ class TuiApp implements TuiHandle {
         return new AgentPresetsOverlay(store, actions)
       case 'agents':
         return new AgentsOverlay(this.tui, store, actions)
+      case 'agentDetail':
+        return new AgentDetailOverlay(this.tui, store, actions, getTool)
       case 'resume':
         return new ResumeOverlay(store, actions)
       case 'approval':

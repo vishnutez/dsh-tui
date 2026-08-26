@@ -1,8 +1,9 @@
 /**
- * `/agents` overlay: a scrollable, read-only list of the current session's
- * direct subagent children (`ctx.subagents.listChildren`), loaded once on
- * open — matches `PluginsOverlay`'s snapshot-not-live shape. Visibility
- * only: no drill-down into a child's own transcript yet.
+ * `/agents` overlay: a scrollable list of the current session's direct
+ * subagent children (`ctx.subagents.listChildren`), loaded once on open —
+ * matches `PluginsOverlay`'s snapshot-not-live shape. A `child` row can be
+ * drilled into (Enter) for its own read-only transcript, live-streaming
+ * while it's still running — see `AgentDetailOverlay`.
  * @module @tomowang/dsh-tui/tui/agents/AgentsOverlay
  */
 
@@ -18,6 +19,7 @@ const secondary = fg(theme.secondary)
 const muted = fg(theme.muted)
 const errorColor = fg(theme.error)
 const success = fg(theme.success)
+const invert = (s: string): string => `\x1b[7m${s}\x1b[0m`
 
 const CHILD_MODE_LABEL: Record<'one-shot' | 'continuable', string> = {
   'one-shot': 'one-shot',
@@ -64,9 +66,15 @@ export class AgentsOverlay implements Component {
   render(_width: number): string[] {
     const overlay = this.store.getSnapshot().overlay
     if (overlay.kind !== 'agents') return []
-    const { rows, busy, error } = overlay.agents
+    const { rows, selected, busy, error } = overlay.agents
     const listHeight = this.listHeight()
-    const offset = Math.min(this.scrollOffset, this.maxOffset(rows))
+    // Clamp scroll to keep the selected row on screen, mirroring
+    // TrajectoryOverlay's ledger — selection drives scroll, not the other
+    // way around.
+    if (selected < this.scrollOffset) this.scrollOffset = selected
+    else if (selected >= this.scrollOffset + listHeight) this.scrollOffset = selected - listHeight + 1
+    const offset = Math.max(0, Math.min(this.scrollOffset, this.maxOffset(rows)))
+    this.scrollOffset = offset
     const windowedRows = rows.slice(offset, offset + listHeight)
     const runningCount = rows.filter(row => row.kind === 'child' && row.activity === 'running').length
 
@@ -75,14 +83,16 @@ export class AgentsOverlay implements Component {
     ]
     if (error !== undefined) lines.push(errorColor(error))
     if (busy && rows.length === 0) lines.push(muted('Loading…'))
-    for (const row of windowedRows) {
+    windowedRows.forEach((row, windowIndex) => {
+      const index = offset + windowIndex
       const { marker, color, kind } = describeRow(row)
       const label = row.kind === 'diagnostic' ? row.id : row.label
       const hasChildren = row.kind === 'child' && row.hasChildren
-      lines.push(`${color(marker)} ${kind.padEnd(11)} ${label}${hasChildren ? muted(' ›') : ''}`)
-    }
+      const line = `${index === selected ? '› ' : '  '}${color(marker)} ${kind.padEnd(11)} ${label}${hasChildren ? muted(' ›') : ''}`
+      lines.push(index === selected ? invert(line) : line)
+    })
     if (rows.length === 0 && !busy && error === undefined) lines.push(muted('No subagents in this session yet.'))
-    lines.push(muted('↑↓ scroll · esc close'))
+    lines.push(muted('↑↓ select · enter view transcript · esc close'))
     return lines
   }
 
@@ -93,23 +103,28 @@ export class AgentsOverlay implements Component {
     }
     const overlay = this.store.getSnapshot().overlay
     if (overlay.kind !== 'agents') return
-    const { rows } = overlay.agents
+    const { rows, selected } = overlay.agents
     const listHeight = this.listHeight()
-    const maxOffset = this.maxOffset(rows)
+    if (rows.length === 0) return
     if (matchesKey(data, Key.up)) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - 1)
+      this.actions.selectAgentRow(Math.max(0, selected - 1))
       return
     }
     if (matchesKey(data, Key.down)) {
-      this.scrollOffset = Math.min(maxOffset, this.scrollOffset + 1)
+      this.actions.selectAgentRow(Math.min(rows.length - 1, selected + 1))
       return
     }
     if (matchesKey(data, Key.pageUp)) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - listHeight)
+      this.actions.selectAgentRow(Math.max(0, selected - listHeight))
       return
     }
     if (matchesKey(data, Key.pageDown)) {
-      this.scrollOffset = Math.min(maxOffset, this.scrollOffset + listHeight)
+      this.actions.selectAgentRow(Math.min(rows.length - 1, selected + listHeight))
+      return
+    }
+    if (matchesKey(data, Key.enter)) {
+      const row = rows[selected]
+      if (row !== undefined && row.kind === 'child') this.actions.openAgentDetail(row.id)
     }
   }
 }

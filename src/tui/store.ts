@@ -56,6 +56,26 @@ export interface AgentPresetsOverlayState {
 export interface AgentsOverlayState {
   /** Joined direct-children listing; empty while the first load is still in flight (see `busy`). */
   readonly rows: readonly SubagentRow[]
+  readonly selected: number
+  readonly busy: boolean
+  readonly error: string | undefined
+}
+
+/**
+ * Overlay-owned state for one `/agents` row's own read-only transcript —
+ * drilled into from the list, mirroring Claude Code CLI's subagent-focus
+ * view. `live: true` means `events` is still receiving further entries as
+ * the child runs (see `subscribeAgentDetail`/`appendAgentDetailEvent`);
+ * `false` means it's a fixed snapshot of an already-finished child.
+ */
+export interface AgentDetailOverlayState {
+  /** The subagent child's session id. */
+  readonly childId: string
+  /** Display label carried over from the `/agents` list row. */
+  readonly label: string
+  /** The child's own session log so far. */
+  readonly events: readonly SessionEvent[]
+  readonly live: boolean
   readonly busy: boolean
   readonly error: string | undefined
 }
@@ -84,6 +104,7 @@ export type Overlay =
   | { readonly kind: 'plugins'; readonly rows: readonly PluginRow[] }
   | { readonly kind: 'agentPresets'; readonly agentPresets: AgentPresetsOverlayState }
   | { readonly kind: 'agents'; readonly agents: AgentsOverlayState }
+  | { readonly kind: 'agentDetail'; readonly agentDetail: AgentDetailOverlayState }
   | { readonly kind: 'resume'; readonly resume: ResumeOverlayState }
   | { readonly kind: 'approval'; readonly approval: ApprovalPromptState }
   | { readonly kind: 'userQuestion'; readonly userQuestion: QuestionPromptState }
@@ -426,7 +447,17 @@ export class TuiStore {
 
   /** Open the `/agents` overlay to a fresh, loading listing. */
   openAgents(): void {
-    this.set({ overlay: { kind: 'agents', agents: { rows: [], busy: true, error: undefined } } })
+    this.set({ overlay: { kind: 'agents', agents: { rows: [], selected: 0, busy: true, error: undefined } } })
+  }
+
+  /** Open one child's own transcript to a fresh, loading view. */
+  openAgentDetail(init: { childId: string; label: string }): void {
+    this.set({
+      overlay: {
+        kind: 'agentDetail',
+        agentDetail: { childId: init.childId, label: init.label, events: [], live: false, busy: true, error: undefined },
+      },
+    })
   }
 
   /** Open the `/resume` overlay to a fresh, loading listing. */
@@ -474,6 +505,23 @@ export class TuiStore {
   updateAgents(patch: Partial<AgentsOverlayState>): void {
     if (this.state.overlay.kind !== 'agents') return
     this.set({ overlay: { kind: 'agents', agents: { ...this.state.overlay.agents, ...patch } } })
+  }
+
+  /** Move the `/agents` list's selection cursor. */
+  selectAgentRow(index: number): void {
+    this.updateAgents({ selected: index })
+  }
+
+  /** Patch the open `/agents` detail view's sub-state; a no-op once it's closed. */
+  updateAgentDetail(patch: Partial<AgentDetailOverlayState>): void {
+    if (this.state.overlay.kind !== 'agentDetail') return
+    this.set({ overlay: { kind: 'agentDetail', agentDetail: { ...this.state.overlay.agentDetail, ...patch } } })
+  }
+
+  /** Append one further live event to the open detail view's transcript; a no-op once the view has moved on (closed, or reopened against a different child). */
+  appendAgentDetailEvent(event: SessionEvent): void {
+    if (this.state.overlay.kind !== 'agentDetail') return
+    this.updateAgentDetail({ events: [...this.state.overlay.agentDetail.events, event] })
   }
 
   /** Patch the open `/resume` overlay's sub-state; a no-op once it's closed. */
