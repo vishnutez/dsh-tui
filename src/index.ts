@@ -534,10 +534,16 @@ async function run(ctx: Context, config: Config, io: TuiIo, mounted: { instance?
    * finished — or vanished between `listChildren`'s snapshot and this call —
    * falls back to its persisted log via `ctx.sessionPersistence`, the same
    * call `loadResumeSessions` makes.
+   *
+   * `childId` is used as-is, with no `ensureSessionIdPrefix` — unlike a
+   * top-level session id, a subagent child's id is a bare id with no
+   * `session-` prefix to begin with (confirmed against both `ctx.sessions`'
+   * live keys and the on-disk persisted directory), so prefixing it would
+   * look up a session that doesn't exist under either name.
    */
   async function loadAgentDetail(childId: string): Promise<void> {
     stopAgentDetailStream()
-    const sessionId = SessionId(ensureSessionIdPrefix(childId))
+    const sessionId = SessionId(childId)
     const liveSession = sessions.get(sessionId)
     if (liveSession !== undefined) {
       current.store.updateAgentDetail({ events: liveSession.events, live: true, busy: false, error: undefined })
