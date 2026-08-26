@@ -39,6 +39,10 @@ function stubActions(): TuiActions {
     applyAgentPreset: vi.fn(),
     openAgents: vi.fn(),
     closeAgents: vi.fn(),
+    openResume: vi.fn(),
+    closeResume: vi.fn(),
+    selectResumeRow: vi.fn(),
+    applyResume: vi.fn(),
   }
 }
 
